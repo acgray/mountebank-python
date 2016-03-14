@@ -8,9 +8,7 @@ class MountebankException(Exception):
 class Microservice:
     def __init__(self, definition, mountebank, host=None):
         resp = mountebank.create_imposter(definition)
-        if resp.status_code != 201:
-            raise MountebankException("{}: {}".format(resp.status_code, resp.text))
-        self.port = resp.json()['port']
+        self.port = resp['port']
         self.mountebank = mountebank
         self.host = host or self.mountebank.host
 
@@ -22,7 +20,7 @@ class Microservice:
 
     @property
     def requests(self):
-        return self._get_self().json()['requests']
+        return self._get_self().json().get('requests', [])
 
     def url(self, path):
         return u'{}:{}{}'.format(self.host, self.port, path)
@@ -54,24 +52,34 @@ class Mountebank:
 
     def create_imposter(self, definition):
         if isinstance(definition, dict):
-            return requests.post(self.imposter_url, json=definition)
+            resp = requests.post(self.imposter_url, json=definition)
         else:
-            return requests.post(self.imposter_url, data=definition)
+            resp = requests.post(self.imposter_url, data=definition)
+        resp.raise_for_status()
+        return resp.json()
 
     def reset(self):
-        return requests.delete(self.imposter_url)
+        resp = requests.delete(self.imposter_url)
+        resp.raise_for_status()
+        return resp.json()
 
     def delete_imposter(self, port):
-        return requests.delete('{}/{}'.format(self.imposter_url, port))
+        resp = requests.delete('{}/{}'.format(self.imposter_url, port))
+        resp.raise_for_status()
+        return resp.json()
 
     def get_all_imposters(self):
-        return requests.get(self.imposter_url)
+        resp = requests.get(self.imposter_url)
+        resp.raise_for_status()
+        return resp.json()
 
     def get_imposter(self, port):
-        return requests.get('{}/{}'.format(self.imposter_url, port)).json()
+        resp = requests.get('{}/{}'.format(self.imposter_url, port))
+        resp.raise_for_status()
+        return resp.json()
 
-    def microservice(self, definition):
-        return Microservice(definition, self)
+    def microservice(self, definition, host):
+        return Microservice(definition, self, host)
 
 
 definition = {"protocol": "http",
