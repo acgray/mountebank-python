@@ -1,100 +1,91 @@
 import requests
-import json
-'''
-http://www.mbtest.org/
-imposter has multiple stubs
-stub has multiple predicates and responses
-predicates define which stub matches
-when a stub matches it uses its next response
-'''
-
-MOUNTEBANK_HOST = 'http://localhost'
-MOUNTEBANK_URL = MOUNTEBANK_HOST + ':2525'
-IMPOSTERS_URL = MOUNTEBANK_URL + '/imposters'
-
-
-def create_imposter(definition):
-    if isinstance(definition, dict):
-        return requests.post(IMPOSTERS_URL, json=definition)
-    else:
-        return requests.post(IMPOSTERS_URL, data=definition)
-
-
-def delete_all_imposters():
-    return requests.delete(IMPOSTERS_URL)
-
-
-def delete_imposter(port):
-    return requests.delete("{}/imposters/{}".format(MOUNTEBANK_URL, port))
-
-
-def get_all_imposters():
-    return requests.get(IMPOSTERS_URL)
-
-
-def get_imposter(port):
-    return requests.get("{}/imposters/{}".format(MOUNTEBANK_URL, port))
 
 
 class MountebankException(Exception):
     pass
 
 
-class Microservice(object):
-
-    def __init__(self, definition):
-        resp = create_imposter(definition)
+class Microservice:
+    def __init__(self, definition, mountebank):
+        resp = mountebank.create_imposter(definition)
         if resp.status_code != 201:
             raise MountebankException("{}: {}".format(resp.status_code, resp.text))
         self.port = resp.json()['port']
+        self.mountebank = mountebank
 
-    def get_url(self, *endpoint):
-        return "{}:{}{}".format(MOUNTEBANK_HOST, self.port, "".join('/' + name for name in endpoint))
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.destroy()
 
-    def get_self(self):
-        return get_imposter(self.port)
+    def _get_self(self):
+        return self.mountebank.get_imposter(self.port)
+
+    @property
+    def requests(self):
+        return self._get_self().json()['requests']
+
+    def url(self, path):
+        return u'{}:{}{}'.format(self.mountebank.host, self.port, path)
 
     def destroy(self):
-        return delete_imposter(self.port)
+        return self.mountebank.delete_imposter(self.port)
 
 
-if __name__ == '__main__':
-    example_imposter = {
-      "protocol": "http",
-      "stubs": [{
-        "responses": [
-          {"is": {"statusCode": 400}}
-        ],
-        "predicates": [{
-          "and": [
-            {
-              "equals": {
-                "path": "/account_overview",
-                "method": "POST"
-              }
-            },
-            {
-              "not": {
-                "exists": {
-                  "query": {
-                    "advertiser": True,
-                    "start_date": True,
-                    "end_date": True
-                  }
-                },
-                "caseSensitive": True
-              }
-            }
-          ]
-        }]
-      }]
-    }
-    ms = Microservice(example_imposter)
+class TestContext:
+    def __init__(self):
+        print "init"
 
-    r1 = requests.post(ms.get_url('account_overview'), params={'advertiser': 'a', 'start_date': 'b', 'end_date': 'c'})
-    r2 = requests.post(ms.get_url('account_overview'), params={'advertiser': 'a', 'start_date': 'b'})
-    assert r1.status_code == 200
-    assert r2.status_code == 400
+    def __enter__(self):
+        print "enter"
 
-    ms.destroy()
-    delete_all_imposters()
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print "exit"
+
+
+class Mountebank:
+    def __init__(self, host=u'localhost', port=2525, ssl=False):
+        self.host = host
+        self.port = port
+        self.ssl = ssl
+
+    @property
+    def imposter_url(self):
+        return '{}://{}:{}/imposters'.format('https' if self.ssl else 'http', self.host, self.port)
+
+    def create_imposter(self, definition):
+        if isinstance(definition, dict):
+            return requests.post(self.imposter_url, json=definition)
+        else:
+            return requests.post(self.imposter_url, data=definition)
+
+    def reset(self):
+        return requests.delete(self.imposter_url)
+
+    def delete_imposter(self, port):
+        return requests.delete('{}/{}'.format(self.imposter_url, port))
+
+    def get_all_imposters(self):
+        return requests.get(self.imposter_url)
+
+    def get_imposter(self, port):
+        return requests.get('{}/{}'.format(self.imposter_url, port)).json()
+
+    def microservice(self, definition):
+        return Microservice(definition, self)
+
+
+definition = {"protocol": "http",
+              "stubs": [{
+                  "responses": [{
+                      "is": {"statusCode": 400}}],
+                  "predicates": [{
+                      "and": [{
+                          "equals": {
+                              "path": "/account_overview",
+                              "method": "POST"}}, {
+                          "not": {
+                              "exists": {
+                                  "query": {
+                                      "advertiser": True,
+                                      "start_date": True,
+                                      "end_date": True}},
+                              "caseSensitive": True}}]}]}]}

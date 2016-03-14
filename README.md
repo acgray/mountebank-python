@@ -1,31 +1,41 @@
-# Mountebank-Python
-Simple bindings to make [Mountebank](http://www.mbtest.org) easier to use from Python
+# mountebank-python
 
-Mountebank is a tool which makes it easier to write tests for [Microservice](http://martinfowler.com/articles/microservices.html) architectures by spawning processes which imitate servers (ie. listening to ports locally and responding to HTTP requests).
+Simple Python library for Mountebank, designed for easy use in integration tests.
 
-## Installation
-`npm install -g mountebank --production`
+Usage:
 
-`pip install mountebank-python`
+```python
+import mountebank
 
-## Usage
+mb = mountebank.Mountebank()
 
-An "imposter" is a process which listens on a port (pretending to be a server)
+definition = {"protocol": "http",
+              "stubs": [{
+                  "responses": [{
+                      "is": {"statusCode": 400}}],
+                  "predicates": [{
+                      "and": [{
+                          "equals": {
+                              "path": "/account_overview",
+                              "method": "POST"}}, {
+                          "not": {
+                              "exists": {
+                                  "query": {
+                                      "advertiser": True,
+                                      "start_date": True,
+                                      "end_date": True}},
+                              "caseSensitive": True}}]}]}]}
 
-An imposter has multiple "stubs"
+service = mb.microservice(definition)
 
-A stub has a list of "predicates" and "responses"
+assert requests.post(ms.url('/account_overview'), params={'advertiser': 'a', 'start_date': 'b', 'end_date': 'c'}).status_code == 200
+assert requests.post(ms.url('/account_overview'), params={'advertiser': 'a', 'start_date': 'b'}).status_code == 400
 
-Predicates define if a stub matches and incoming HTTP request
+service.destroy()
 
-When a stub matches it responds with the next response in it's responses list
+# context manager usage
 
-
-Run `mb` to start mountebank
-
-In python:
-  1. Define your imposters (example given in mountebank.py)
-  2. Initialize a microservice object
-  3. Make requests to it
-
-Example usage in mountebank.py 
+with mb.microservice(definition):
+    assert requests.post(ms.url('/account_overview'), params={'advertiser': 'a', 'start_date': 'b', 'end_date': 'c'}).status_code == 200
+    assert requests.post(ms.url('/account_overview'), params={'advertiser': 'a', 'start_date': 'b'}).status_code == 400
+```
