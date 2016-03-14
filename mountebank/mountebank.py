@@ -6,12 +6,13 @@ class MountebankException(Exception):
 
 
 class Microservice:
-    def __init__(self, definition, mountebank):
+    def __init__(self, definition, mountebank, host=None):
         resp = mountebank.create_imposter(definition)
         if resp.status_code != 201:
             raise MountebankException("{}: {}".format(resp.status_code, resp.text))
         self.port = resp.json()['port']
         self.mountebank = mountebank
+        self.host = host or self.mountebank.host
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.destroy()
@@ -24,7 +25,7 @@ class Microservice:
         return self._get_self().json()['requests']
 
     def url(self, path):
-        return u'{}:{}{}'.format(self.mountebank.host, self.port, path)
+        return u'{}:{}{}'.format(self.host, self.port, path)
 
     def destroy(self):
         return self.mountebank.delete_imposter(self.port)
