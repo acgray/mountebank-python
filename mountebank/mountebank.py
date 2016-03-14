@@ -20,7 +20,7 @@ class Microservice:
 
     @property
     def requests(self):
-        return self._get_self().json().get('requests', [])
+        return self._get_self().get('requests', [])
 
     def url(self, path):
         return u'{}:{}{}'.format(self.host, self.port, path)
